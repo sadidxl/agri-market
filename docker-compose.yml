@@ -1,0 +1,52 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: agrimarket-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: agrimarket_root_2024
+      MYSQL_DATABASE: agrimarket
+    ports:
+      # Host port 3307, not 3306 — avoids clashing with any MySQL/XAMPP
+      # already running on your machine. The app itself talks to MySQL
+      # over the internal Docker network (service name "mysql"), so this
+      # mapping is only for connecting a DB tool from your host if you want.
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  app:
+    build: .
+    container_name: agrimarket-app
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: agrimarket_root_2024
+      DB_NAME: agrimarket
+      PORT: 5000
+      CLIENT_URL: http://localhost:5173
+      JWT_SECRET: change_this_to_a_random_string_in_production
+      JWT_EXPIRES_IN: 7d
+    ports:
+      - "5000:5000"
+      - "5173:5173"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./server:/app/server
+      - ./client:/app/client
+      - /app/server/node_modules
+      - /app/client/node_modules
+    # seed.js is idempotent (it checks for existing accounts/products
+    # before inserting), so running it on every startup is safe and
+    # ensures the test accounts always exist without a manual step.
+    command: sh -c "cd server && node seed.js; cd .. && npm run dev"
+
+volumes:
+  mysql_data:
